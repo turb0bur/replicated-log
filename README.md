@@ -62,9 +62,24 @@ Before you begin, ensure you have met the following requirements:
 
 ## Usage
 
+To run the Replicated Log using Docker Compose, follow the steps below:
+
+###  1. Start the Application with Docker Compose
+
+Open your terminal and navigate to the directory containing your `docker-compose.yml` file
+
+```bash
+cd /path/to/your/project/replicated-log
+``` 
+and run the command to start the Master and Secondary nodes:
+
+```bash
+docker-compose up
+```
+
 The **Replicated Log** allows you to append log messages to a Master node, which then asynchronously replicates these logs to multiple Secondary nodes. This ensures data consistency and reliability across your distributed system. Below are detailed instructions and examples on how to interact with the system using HTTP requests.
 
-### 1. Append a Log Entry
+### 2. Append a Log Entry
 
 To append a new log message to the system, send a `POST` request to the Master's `/logs` endpoint with the log message in the request body.
 
@@ -87,7 +102,7 @@ curl -X POST "http://localhost:8000/logs" \
 }
 ```
 
-### 2. Listing Logs
+### 3. Listing Logs
 
 Retrieving log entries from your Distributed Log System is straightforward. You can fetch logs from both the **Master** and **Secondary** nodes using `GET` requests. Below are detailed instructions and examples on how to list logs from different nodes.
 
