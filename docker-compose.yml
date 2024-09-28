@@ -1,0 +1,40 @@
+services:
+  master:
+    build:
+      context: ./master
+    container_name: master
+    ports:
+      - "8000:8000"
+    environment:
+      - SECONDARY_URLS=http://secondary1:8000,http://secondary2:8000
+    depends_on:
+      - secondary1
+      - secondary2
+    networks:
+      - lognet
+
+  secondary1:
+    build:
+      context: ./secondary
+    container_name: secondary1
+    ports:
+      - "8001:8000"
+    environment:
+      - REPLICATION_DELAY=2
+    networks:
+      - lognet
+
+  secondary2:
+    build:
+      context: ./secondary
+    container_name: secondary2
+    ports:
+      - "8002:8000"
+    environment:
+      - REPLICATION_DELAY=1
+    networks:
+      - lognet
+
+networks:
+  lognet:
+    driver: bridge
