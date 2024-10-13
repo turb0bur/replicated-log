@@ -1,12 +1,16 @@
 services:
   master:
     build:
-      context: ./master
+      context: .
+      dockerfile: master/Dockerfile
     container_name: master
     ports:
       - "8000:8000"
     environment:
-      - SECONDARY_URLS=http://secondary1:8000,http://secondary2:8000
+      - SECONDARY_URLS=${SECONDARY_URLS}
+      - RETRY_COUNT=${RETRY_COUNT}
+      - RETRY_DELAY=${RETRY_DELAY}
+      - REPLICATE_SECRET=${REPLICATE_SECRET}
     depends_on:
       - secondary1
       - secondary2
@@ -15,23 +19,27 @@ services:
 
   secondary1:
     build:
-      context: ./secondary
+      context: .
+      dockerfile: secondary/Dockerfile
     container_name: secondary1
     ports:
       - "8001:8000"
     environment:
-      - REPLICATION_DELAY=2
+      - MAX_REPLICATION_DELAY=${MAX_REPLICATION_DELAY}
+      - REPLICATE_SECRET=${REPLICATE_SECRET}
     networks:
       - lognet
 
   secondary2:
     build:
-      context: ./secondary
+      context: .
+      dockerfile: secondary/Dockerfile
     container_name: secondary2
     ports:
       - "8002:8000"
     environment:
-      - REPLICATION_DELAY=1
+      - MAX_REPLICATION_DELAY=${MAX_REPLICATION_DELAY}
+      - REPLICATE_SECRET=${REPLICATE_SECRET}
     networks:
       - lognet
 

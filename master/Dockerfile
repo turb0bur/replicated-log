@@ -2,10 +2,11 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY master/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY master.py .
+COPY master/master.py .
+COPY common ./common/
 
 RUN useradd -m appuser
 USER appuser
