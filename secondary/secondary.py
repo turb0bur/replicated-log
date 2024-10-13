@@ -1,39 +1,70 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+import asyncio
 import logging
 import os
-import asyncio
-from typing import List
+import random
 
-app = FastAPI()
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import JSONResponse
 
-logging.basicConfig(level=logging.INFO)
+from common.log_entry import LogEntry
+from common.log_storage import LogStorage
+from common.storage_strategy import SecondaryStorageStrategy
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger("secondary")
 
-logs: List[dict] = []
 
-REPLICATION_DELAY = float(os.getenv("REPLICATION_DELAY", "2"))
+class SecondaryNode:
+    def __init__(self):
+        self.app = FastAPI(lifespan=self.lifespan)
+        self.app.post("/replicate")(self.replicate)
+        self.app.get("/logs")(self.list_logs)
 
-class LogEntry(BaseModel):
-    id: int
-    message: str
+        self.MAX_REPLICATION_DELAY = int(os.getenv("MAX_REPLICATION_DELAY", 5))
+        self.REPLICATE_SECRET = os.getenv("REPLICATE_SECRET", )
 
-@app.post("/replicate")
-async def replicate_log(entry: LogEntry):
-    logger.info(f"Received replication request: {entry}")
+        logger.info(f"Max Replication Delay set to: {self.MAX_REPLICATION_DELAY} seconds.")
 
-    logger.info(f"Simulating delay of {REPLICATION_DELAY} seconds.")
-    await asyncio.sleep(REPLICATION_DELAY)
+        self.log_storage = LogStorage(SecondaryStorageStrategy())
 
-    if any(log['id'] == entry.id for log in logs):
-        logger.warning(f"Duplicate log entry received: {entry.id}")
-        return {"status": "duplicate"}
+    async def lifespan(self, app: FastAPI):
+        logger.debug("Starting up the Secondary application...")
+        yield  # Application runs here
+        logger.debug("Shutting down the Secondary application...")
 
-    logs.append(entry.dict())
-    logger.info(f"Log entry replicated: {entry}")
-    return {"status": "ack"}
+    async def replicate(self, log_entry: LogEntry) -> JSONResponse:
+        delay = random.randint(1, self.MAX_REPLICATION_DELAY)
+        logger.info(
+            f"Log #{log_entry.sequence_number}."
+            f"Simulating replication delay of {delay} seconds"
+        )
+        await asyncio.sleep(delay)
 
-@app.get("/logs")
-async def get_logs():
-    logger.info("Retrieving all replicated log entries.")
-    return logs
+        try:
+            self.log_storage.append(log_entry)
+            logger.info(f"Log #{log_entry.sequence_number}. Replicated to secondary node")
+
+            return JSONResponse(content={
+                "message": "Replication successful",
+                "sequence_number": log_entry.sequence_number,
+            }, status_code=200)
+        except Exception as e:
+            logger.error(f"Error in replication: {e}")
+            raise HTTPException(status_code=500, detail="Internal Server Error")
+
+    async def list_logs(self) -> JSONResponse:
+        logger.info("Received request to list all replicated logs.")
+        return JSONResponse(
+            content=[log.model_dump() for log in self.log_storage.list()],
+            status_code=200
+        )
+
+
+secondary_node = SecondaryNode()
+app = secondary_node.app
