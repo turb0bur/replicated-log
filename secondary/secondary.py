@@ -41,7 +41,7 @@ class SecondaryNode:
     async def replicate(self, log_entry: LogEntry) -> JSONResponse:
         delay = random.randint(1, self.MAX_REPLICATION_DELAY)
         logger.info(
-            f"Log #{log_entry.sequence_number}."
+            f"Log #{log_entry.sequence_number}. "
             f"Simulating replication delay of {delay} seconds"
         )
         await asyncio.sleep(delay)
