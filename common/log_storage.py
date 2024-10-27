@@ -22,3 +22,6 @@ class LogStorage(metaclass=SingletonMeta):
 
     def count(self) -> int:
         return self.storage_strategy.count_logs()
+
+    def reset(self):
+        self.storage_strategy.clear_storage()

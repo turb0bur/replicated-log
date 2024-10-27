@@ -27,7 +27,7 @@ async def run_replication_tasks(tasks, sequence_number):
 
 
 class MasterNode:
-    def __init__(self):
+    def __init__(self, log_storage: LogStorage):
         self.app = FastAPI(lifespan=self.lifespan)
         self.app.post("/logs")(self.append_log)
         self.app.get("/logs")(self.list_logs)
@@ -47,7 +47,7 @@ class MasterNode:
 
         self.client = httpx.AsyncClient()
         self.lock = asyncio.Lock()
-        self.log_storage = LogStorage(MasterStorageStrategy())
+        self.log_storage = storage
 
     async def lifespan(self, app: FastAPI):
         logger.debug("Starting up the Master application...")
@@ -171,5 +171,6 @@ class MasterNode:
         )
 
 
-master_node = MasterNode()
+storage = LogStorage(MasterStorageStrategy())
+master_node = MasterNode(log_storage=storage)
 app = master_node.app

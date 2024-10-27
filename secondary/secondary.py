@@ -21,7 +21,7 @@ logger = logging.getLogger("secondary")
 
 
 class SecondaryNode:
-    def __init__(self):
+    def __init__(self, log_storage: LogStorage):
         self.app = FastAPI(lifespan=self.lifespan)
         self.app.post("/replicate")(self.replicate)
         self.app.get("/logs")(self.list_logs)
@@ -31,7 +31,7 @@ class SecondaryNode:
 
         logger.info(f"Max Replication Delay set to: {self.MAX_REPLICATION_DELAY} seconds.")
 
-        self.log_storage = LogStorage(SecondaryStorageStrategy())
+        self.log_storage = log_storage
 
     async def lifespan(self, app: FastAPI):
         logger.debug("Starting up the Secondary application...")
@@ -65,6 +65,6 @@ class SecondaryNode:
             status_code=200
         )
 
-
-secondary_node = SecondaryNode()
+storage = LogStorage(SecondaryStorageStrategy())
+secondary_node = SecondaryNode(log_storage=storage)
 app = secondary_node.app
