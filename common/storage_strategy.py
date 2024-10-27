@@ -24,9 +24,14 @@ class BaseStorageStrategy(StorageStrategy):
     def __init__(self):
         self.logs = []
         self.count = 0
+        self.sequence_tracker = set()
 
     def log_message(self, message: LogEntry) -> None:
+        if message.sequence_number in self.sequence_tracker:
+            return
+
         self.logs.append(message)
+        self.sequence_tracker.add(message.sequence_number)
         self.count += 1
 
     def retrieve_logs(self) -> list[LogEntry]:
@@ -38,6 +43,7 @@ class BaseStorageStrategy(StorageStrategy):
     def clear_storage(self) -> None:
         self.logs = []
         self.count = 0
+        self.sequence_tracker.clear()
 
 
 class MasterStorageStrategy(BaseStorageStrategy):
