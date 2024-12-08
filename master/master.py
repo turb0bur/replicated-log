@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 import uuid
 
 import httpx
@@ -37,13 +38,13 @@ class MasterNode:
             for url in os.getenv("SECONDARY_URLS", "").split(",")
             if url.strip()
         ]
-        self.RETRY_COUNT = int(os.getenv("RETRY_COUNT", 3))
-        self.RETRY_DELAY = float(os.getenv("RETRY_DELAY", 2))
+        self.INITIAL_RETRY_DELAY = int(os.getenv("INITIAL_RETRY_DELAY", 2))
+        self.MAX_RETRY_DELAY = int(os.getenv("MAX_RETRY_DELAY", 30))
         self.REPLICATE_SECRET = os.getenv("REPLICATE_SECRET")
 
         logger.info(f"Loaded {len(self.SECONDARY_URLS)} secondary URLs.")
-        logger.info(f"Retry Count set to: {self.RETRY_COUNT}")
-        logger.info(f"Retry Delay set to: {self.RETRY_DELAY} seconds.")
+        logger.info(f"Initial Retry Delay set to: {self.INITIAL_RETRY_DELAY} seconds.")
+        logger.info(f"Max Retry Delay set to: {self.MAX_RETRY_DELAY} seconds.")
 
         self.client = httpx.AsyncClient()
         self.lock = asyncio.Lock()
@@ -59,6 +60,14 @@ class MasterNode:
         await self.client.aclose()
         logger.info("HTTP client closed.")
 
+    def validate_write_concern(self, message_write_concern: int):
+        """Ensure the write concern does not exceed the available secondary nodes."""
+        if message_write_concern > (len(self.SECONDARY_URLS) + 1):
+            raise ValueError(
+                f"Write concern ({message_write_concern}) exceeds the number of secondary nodes available "
+                f"({len(self.SECONDARY_URLS)}). Adjust the write concern or add more secondary nodes."
+            )
+
     async def append_log(self, entry: LogEntryCreate = Body(...)) -> JSONResponse:
         async with self.lock:  # to ensure that only one coroutine can modify sequence_counter
             new_sequence_number = self.log_storage.count() + 1
@@ -66,6 +75,7 @@ class MasterNode:
 
             message_id = str(uuid.uuid4())
             write_concern = entry.write_concern
+            self.validate_write_concern(write_concern)
             logger.debug(f"Log #{new_sequence_number}. Generated message ID: {message_id}")
 
             log_entry = LogEntry(
@@ -125,17 +135,22 @@ class MasterNode:
 
     async def replicate_with_retries(self, url: str, log_entry: LogEntry) -> httpx.Response:
         headers = {"X-API-Key": self.REPLICATE_SECRET}
-        for attempt in range(1, self.RETRY_COUNT + 1):
+        max_delay = self.MAX_RETRY_DELAY
+        delay = self.INITIAL_RETRY_DELAY
+
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 logger.info(
                     f"Log #{log_entry.sequence_number}. "
-                    f"Attempting replication to {url}. Attempt {attempt}/{self.RETRY_COUNT}"
+                    f"Attempting replication to {url}. Attempt {attempt}"
                 )
                 response = await self.client.post(
                     url,
                     json=log_entry.model_dump(),
                     headers=headers,
-                    timeout=self.RETRY_DELAY
+                    timeout=delay
                 )
                 if response.status_code == 200:
                     logger.debug(f"Replication to {url} succeeded on attempt {attempt}")
@@ -151,17 +166,15 @@ class MasterNode:
                     f"Replication to {url} encountered an error on attempt {attempt}: {e}"
                 )
 
+            jitter = random.uniform(0, delay)
+            backoff_delay = min(delay + jitter, max_delay)
+
             logger.info(
                 f"Log #{log_entry.sequence_number}."
-                f"Waiting for {self.RETRY_DELAY} seconds before next replication attempt to {url}"
+                f"Waiting for {backoff_delay:.2f} seconds before next replication attempt to {url}"
             )
-            await asyncio.sleep(self.RETRY_DELAY)
-
-        logger.error(
-            f"Log #{log_entry.sequence_number}. "
-            f"Failed to replicate to {url} after {self.RETRY_COUNT} attempts."
-        )
-        raise HTTPException(status_code=500, detail=f"Failed to replicate to {url} after {self.RETRY_COUNT} attempts.")
+            await asyncio.sleep(backoff_delay)
+            delay = min(delay * 2, max_delay)
 
     def list_logs(self) -> JSONResponse:
         logger.info("Received request to list all logs.")

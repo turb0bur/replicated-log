@@ -8,8 +8,8 @@ services:
       - "8000:8000"
     environment:
       - SECONDARY_URLS=${SECONDARY_URLS}
-      - RETRY_COUNT=${RETRY_COUNT}
-      - RETRY_DELAY=${RETRY_DELAY}
+      - INITIAL_RETRY_DELAY=${INITIAL_RETRY_DELAY}
+      - MAX_RETRY_DELAY=${MAX_RETRY_DELAY}
       - REPLICATE_SECRET=${REPLICATE_SECRET}
     depends_on:
       - secondary1
