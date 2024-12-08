@@ -27,6 +27,7 @@ services:
     environment:
       - MAX_REPLICATION_DELAY=${MAX_REPLICATION_DELAY}
       - REPLICATE_SECRET=${REPLICATE_SECRET}
+      - SECONDARY_ERROR_PROBABILITY=${SECONDARY_ERROR_PROBABILITY}
     networks:
       - lognet
 
@@ -40,6 +41,7 @@ services:
     environment:
       - MAX_REPLICATION_DELAY=${MAX_REPLICATION_DELAY}
       - REPLICATE_SECRET=${REPLICATE_SECRET}
+      - SECONDARY_ERROR_PROBABILITY=${SECONDARY_ERROR_PROBABILITY}
     networks:
       - lognet
 

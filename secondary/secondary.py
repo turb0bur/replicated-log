@@ -27,7 +27,8 @@ class SecondaryNode:
         self.app.get("/logs")(self.list_logs)
 
         self.MAX_REPLICATION_DELAY = int(os.getenv("MAX_REPLICATION_DELAY", 5))
-        self.REPLICATE_SECRET = os.getenv("REPLICATE_SECRET", )
+        self.REPLICATE_SECRET = os.getenv("REPLICATE_SECRET")
+        self.SECONDARY_ERROR_PROBABILITY = float(os.getenv("SECONDARY_ERROR_PROBABILITY", 0.1))
 
         logger.info(f"Max Replication Delay set to: {self.MAX_REPLICATION_DELAY} seconds.")
 
@@ -38,15 +39,27 @@ class SecondaryNode:
         yield  # Application runs here
         logger.debug("Shutting down the Secondary application...")
 
-    async def replicate(self, log_entry: LogEntry) -> JSONResponse:
+    async def simulate_delay(self, sequence_number: int):
+        """Simulates a random delay in replication."""
         delay = random.randint(1, self.MAX_REPLICATION_DELAY)
         logger.info(
-            f"Log #{log_entry.sequence_number}. "
+            f"Log #{sequence_number}. "
             f"Simulating replication delay of {delay} seconds"
         )
         await asyncio.sleep(delay)
 
+    def simulate_error(self, sequence_number: int):
+        """Simulates a random internal server error based on probability."""
+        if random.random() < self.SECONDARY_ERROR_PROBABILITY:
+            logger.error(f"Log #{sequence_number}. "
+                         f"Simulated error for log replication with {self.SECONDARY_ERROR_PROBABILITY * 100}% chance")
+            raise HTTPException(status_code=500, detail="Simulated internal server error")
+
+    async def replicate(self, log_entry: LogEntry) -> JSONResponse:
         try:
+            self.simulate_error(log_entry.sequence_number)
+            await self.simulate_delay(log_entry.sequence_number)
+
             self.log_storage.append(log_entry)
             logger.info(f"Log #{log_entry.sequence_number}. Replicated to secondary node")
 
@@ -55,7 +68,7 @@ class SecondaryNode:
                 "sequence_number": log_entry.sequence_number,
             }, status_code=200)
         except Exception as e:
-            logger.error(f"Error in replication: {e}")
+            logger.error(f"Log #{log_entry.sequence_number}. Unexpected error in replication: {e}")
             raise HTTPException(status_code=500, detail="Internal Server Error")
 
     async def list_logs(self) -> JSONResponse:
@@ -64,6 +77,7 @@ class SecondaryNode:
             content=[log.model_dump() for log in self.log_storage.list()],
             status_code=200
         )
+
 
 storage = LogStorage(SecondaryStorageStrategy())
 secondary_node = SecondaryNode(log_storage=storage)
