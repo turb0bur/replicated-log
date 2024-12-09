@@ -118,3 +118,16 @@ class NodeStatusManager(metaclass=SingletonMeta):
         """Update the status and last_updated field for a node."""
         self.node_status[node_url]["status"] = status.value
         self.node_status[node_url]["last_updated"] = datetime.now().isoformat()
+
+    def is_node_healthy(self, node_url: str) -> bool:
+        """Checks if a node is healthy based on its status. Returns True if healthy, False otherwise."""
+        node_status = self.node_status.get(node_url)
+        if node_status is None:
+            logger.warning(f"Node status for {node_url} not found.")
+            return False
+
+        if node_status["status"] == NodeStatus.HEALTHY.value:
+            return True
+        else:
+            logger.info(f"Node {node_url} is {node_status['status']}. Skipping replication.")
+            return False

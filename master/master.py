@@ -180,7 +180,7 @@ class MasterNode:
         attempt = 0
         while True:
             attempt += 1
-            if not self.is_node_healthy(url):
+            if not self.status_manager.is_node_healthy(url):
                 await exponential_backoff_with_jitter(delay, max_delay)
                 delay = min(delay * 2, max_delay)
                 continue
