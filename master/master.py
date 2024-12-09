@@ -100,7 +100,7 @@ class MasterNode:
         total_nodes = len(self.secondary_urls) + 1
         healthy_nodes = self.status_manager.get_healthy_nodes_count()
         required_quorum = (total_nodes // 2) + 1
-        return healthy_nodes >= required_quorum
+        return healthy_nodes + 1 >= required_quorum
 
     def is_read_only(self) -> bool:
         """Returns True if the node should be in read-only mode due to quorum failure."""
@@ -138,7 +138,15 @@ class MasterNode:
 
             message_id = str(uuid.uuid4())
             write_concern = entry.write_concern
-            self.validate_write_concern(write_concern)
+            try:
+                self.validate_write_concern(write_concern)
+            except ValueError as e:
+                logger.error(f"Invalid write concern: {e}")
+                return JSONResponse(
+                    content={"detail": str(e)},
+                    status_code=400
+                )
+
             logger.debug(f"Log #{new_sequence_number}. Generated message ID: {message_id}")
 
             log_entry = LogEntry(
