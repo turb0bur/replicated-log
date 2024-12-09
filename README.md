@@ -189,6 +189,11 @@ The health check functionality can be configured using environment variables:
 - `HEALTHY_THRESHOLD`: The number of consecutive successful health checks required to mark a node as healthy.
 - `UNHEALTHY_THRESHOLD`: The number of consecutive failed health checks required to mark a node as unhealthy.
 
+#### Statuses
+- **Healthy**: A node is considered healthy if it responds successfully to the `HEALTHY_THRESHOLD` check requests.
+- **Suspected**: A node is considered suspected if it intermittently fails to respond to health check requests but does not meet the `UNHEALTHY_THRESHOLD` to be marked as unhealthy.
+- **Unhealthy**: A node is considered unhealthy if it fails to respond to the health check requests within a specified `UNHEALTHY_THRESHOLD`.
+
 #### Health Status Endpoint
 **Request:**
 ```bash
