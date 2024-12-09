@@ -178,6 +178,26 @@ curl -X GET "http://localhost:8001/logs"
 **Note:**
 Replace 8001 with the appropriate port number if you have additional Secondary nodes (e.g., 8002, 8003, etc.).
 
+## Quorum Checking
+The Replicated Log system uses a quorum-based approach to ensure data consistency and reliability across the distributed nodes. The quorum functionality is crucial for maintaining the integrity of the log replication process.
+
+The Master node is responsible for appending log entries and replicating them to the Secondary nodes. It waits for acknowledgments (ACKs) from a quorum of Secondary nodes before confirming the log entry to the client. 
+
+#### Quorum Calculation
+The quorum is typically defined as a majority of the nodes. The formula for calculating the quorum is 50% of the total number of nodes plus 1.
+
+For example:
+- if there are 2 Secondary nodes, a quorum would be 2 nodes;
+- if there are 3 Secondary nodes, a quorum would be 3 nodes; 
+- if there are 4 Secondary nodes, a quorum would be 3 nodes as well
+
+**Response example when quorum is not met:**
+```json
+{
+    "detail": "Read-only mode due to insufficient nodes quorum."
+}
+```
+
 ## Example of docker-compose logs
 
 ```bash

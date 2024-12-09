@@ -97,8 +97,10 @@ class MasterNode:
 
     def has_quorum(self) -> bool:
         """Check if the majority of the nodes are healthy."""
+        total_nodes = len(self.secondary_urls) + 1
         healthy_nodes = self.status_manager.get_healthy_nodes_count()
-        return healthy_nodes >= (len(self.secondary_urls) // 2)
+        required_quorum = (total_nodes // 2) + 1
+        return healthy_nodes >= required_quorum
 
     def is_read_only(self) -> bool:
         """Returns True if the node should be in read-only mode due to quorum failure."""
