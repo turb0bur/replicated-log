@@ -81,10 +81,25 @@ class SecondaryNode:
             raise HTTPException(status_code=500, detail="Internal Server Error")
 
     async def list_logs(self) -> JSONResponse:
-        """List all the logs stored in the secondary node."""
+        """List all the logs stored in the secondary node, ensuring total order and completeness."""
         logger.info("Received request to list all replicated logs.")
+
+        logs = self.log_storage.list()
+
+        if not logs:
+            return JSONResponse(content=[], status_code=200)
+
+        max_sequence_number = max(log.sequence_number for log in logs)
+        min_sequence_number = min(log.sequence_number for log in logs)
+
+        expected_count = max_sequence_number - min_sequence_number + 1
+        if len(logs) != expected_count:
+            logger.warning("Log sequence is incomplete. Missing sequence numbers.")
+            raise HTTPException(status_code=500, detail="Log sequence is incomplete.")
+
+        sorted_logs = sorted(logs, key=lambda log: log.sequence_number)
         return JSONResponse(
-            content=[log.model_dump() for log in self.log_storage.list()],
+            content=[log.model_dump() for log in sorted_logs],
             status_code=200
         )
 
