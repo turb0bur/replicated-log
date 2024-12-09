@@ -1,6 +1,7 @@
 from common import LogEntry
 from common.storage_strategy import StorageStrategy
 
+
 class SingletonMeta(type):
     _instances = {}
 
@@ -9,6 +10,7 @@ class SingletonMeta(type):
             instance = super().__call__(*args, **kwargs)
             cls._instances[cls] = instance
         return cls._instances[cls]
+
 
 class LogStorage(metaclass=SingletonMeta):
     def __init__(self, storage_strategy: StorageStrategy):
