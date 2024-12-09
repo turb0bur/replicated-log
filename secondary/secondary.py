@@ -90,10 +90,8 @@ class SecondaryNode:
             return JSONResponse(content=[], status_code=200)
 
         max_sequence_number = max(log.sequence_number for log in logs)
-        min_sequence_number = min(log.sequence_number for log in logs)
 
-        expected_count = max_sequence_number - min_sequence_number + 1
-        if len(logs) != expected_count:
+        if len(logs) != max_sequence_number:
             logger.warning("Log sequence is incomplete. Missing sequence numbers.")
             raise HTTPException(status_code=500, detail="Log sequence is incomplete.")
 
