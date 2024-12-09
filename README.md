@@ -178,6 +178,45 @@ curl -X GET "http://localhost:8001/logs"
 **Note:**
 Replace 8001 with the appropriate port number if you have additional Secondary nodes (e.g., 8002, 8003, etc.).
 
+## Health Checking
+The Replicated Log system includes a health checking mechanism to monitor the status of the Secondary nodes. 
+This ensures that the system can detect and respond to node failures, maintaining the reliability and consistency of the log replication process.  
+
+#### Configuration
+The health check functionality can be configured using environment variables:  
+- `HEALTH_CHECK_INTERVAL`: The interval in seconds between health check requests.
+- `HEALTH_CHECK_TIMEOUT`: The timeout in seconds for each health check request.
+- `HEALTHY_THRESHOLD`: The number of consecutive successful health checks required to mark a node as healthy.
+- `UNHEALTHY_THRESHOLD`: The number of consecutive failed health checks required to mark a node as unhealthy.
+
+#### Health Status Endpoint
+**Request:**
+```bash
+curl -X GET "http://localhost:8000/health"
+```
+**Response Example :**
+
+```json
+{
+  "nodes": [
+    {
+      "node_url": "http://secondary1:8000",
+      "healthy_count": 12,
+      "unhealthy_count": 0,
+      "status": "healthy",
+      "last_updated": "2024-12-09T14:38:19.540197"
+    },
+    {
+      "node_url": "http://secondary2:8000",
+      "healthy_count": 4,
+      "unhealthy_count": 0,
+      "status": "healthy",
+      "last_updated": "2024-12-09T14:40:51.535589"
+    }
+  ]
+}
+```
+
 ## Quorum Checking
 The Replicated Log system uses a quorum-based approach to ensure data consistency and reliability across the distributed nodes. The quorum functionality is crucial for maintaining the integrity of the log replication process.
 
