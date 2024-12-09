@@ -1,3 +1,5 @@
+import json
+
 from abc import ABC, abstractmethod
 from .log_entry import LogEntry
 
@@ -21,29 +23,33 @@ class StorageStrategy(ABC):
 
 
 class BaseStorageStrategy(StorageStrategy):
-    def __init__(self):
-        self.logs = []
-        self.count = 0
-        self.sequence_tracker = set()
+    def __init__(self, file_path: str):
+        self.file_path = file_path
 
     def log_message(self, message: LogEntry) -> None:
-        if message.sequence_number in self.sequence_tracker:
-            return
-
-        self.logs.append(message)
-        self.sequence_tracker.add(message.sequence_number)
-        self.count += 1
+        with open(self.file_path, 'a') as file:
+            file.write(json.dumps(message.__dict__) + '\n')
 
     def retrieve_logs(self) -> list[LogEntry]:
-        return self.logs
+        logs = []
+        try:
+            with open(self.file_path, 'r') as file:
+                for line in file:
+                    log_data = json.loads(line)
+                    logs.append(LogEntry(**log_data))
+        except FileNotFoundError:
+            pass
+        return logs
 
     def count_logs(self) -> int:
-        return self.count
+        try:
+            with open(self.file_path, 'r') as file:
+                return sum(1 for _ in file)
+        except FileNotFoundError:
+            return 0
 
     def clear_storage(self) -> None:
-        self.logs = []
-        self.count = 0
-        self.sequence_tracker.clear()
+        open(self.file_path, 'w').close()
 
 
 class MasterStorageStrategy(BaseStorageStrategy):

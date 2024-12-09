@@ -111,6 +111,6 @@ class SecondaryNode:
         )
 
 
-storage = LogStorage(SecondaryStorageStrategy())
+storage = LogStorage(SecondaryStorageStrategy('./storage.log'))
 secondary_node = SecondaryNode(log_storage=storage)
 app = secondary_node.app

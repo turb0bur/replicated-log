@@ -18,6 +18,8 @@ services:
     depends_on:
       - secondary1
       - secondary2
+    volumes:
+      - ./logs/master.log:/app/storage.log
     networks:
       - lognet
 
@@ -27,11 +29,13 @@ services:
       dockerfile: secondary/Dockerfile
     container_name: secondary1
     ports:
-      - "8001:8000"
+      - "8003:8000"
     environment:
       - MAX_REPLICATION_DELAY=${MAX_REPLICATION_DELAY}
       - SECONDARY_AUTH_SECRET=${SECONDARY_AUTH_SECRET}
       - SECONDARY_ERROR_PROBABILITY=${SECONDARY_ERROR_PROBABILITY}
+    volumes:
+      - ./logs/secondary1.log:/app/storage.log
     networks:
       - lognet
 
@@ -46,6 +50,8 @@ services:
       - MAX_REPLICATION_DELAY=${MAX_REPLICATION_DELAY}
       - SECONDARY_AUTH_SECRET=${SECONDARY_AUTH_SECRET}
       - SECONDARY_ERROR_PROBABILITY=${SECONDARY_ERROR_PROBABILITY}
+    volumes:
+      - ./logs/secondary2.log:/app/storage.log
     networks:
       - lognet
 

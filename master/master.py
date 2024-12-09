@@ -236,7 +236,7 @@ class MasterNode:
         )
 
 
-storage = LogStorage(MasterStorageStrategy())
+storage = LogStorage(MasterStorageStrategy('./storage.log'))
 status_manager = NodeStatusManager()
 master_node = MasterNode(log_storage=storage, status_manager=status_manager)
 app = master_node.app
