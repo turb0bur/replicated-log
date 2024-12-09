@@ -40,9 +40,10 @@ class SecondaryNode:
         yield
         logger.debug("Shutting down the Secondary application...")
 
-    def authorize_request(self, auth_header: str = Header(None)):
+    def authorize_request(self, x_api_key: str = Header(None)):
         """Authorization dependency to validate the X-API-Key header."""
-        if auth_header != self.SECONDARY_AUTH_SECRET:
+        logger.debug(f"Authorizing request with key: {x_api_key}")
+        if x_api_key != self.SECONDARY_AUTH_SECRET:
             raise HTTPException(status_code=403, detail="Unauthorized")
 
     async def simulate_delay(self, sequence_number: int):
@@ -61,8 +62,9 @@ class SecondaryNode:
                          f"Simulated error for log replication with {self.SECONDARY_ERROR_PROBABILITY * 100}% chance")
             raise HTTPException(status_code=500, detail="Simulated internal server error")
 
-    async def replicate(self, log_entry: LogEntry, _: None = Depends(authorize_request)) -> JSONResponse:
+    async def replicate(self, log_entry: LogEntry, x_api_key: str = Header(None)) -> JSONResponse:
         """Replicates the log entry to the secondary node with authorization."""
+        self.authorize_request(x_api_key)
         try:
             self.simulate_error(log_entry.sequence_number)
             await self.simulate_delay(log_entry.sequence_number)
@@ -86,9 +88,10 @@ class SecondaryNode:
             status_code=200
         )
 
-    async def ping(self, _: None = Depends(authorize_request)) -> JSONResponse:
+    async def ping(self, x_api_key: str = Header(None)) -> JSONResponse:
         """Ping endpoint to check secondary node health with authorization."""
-        logger.info("Ping request received.")
+        self.authorize_request(x_api_key)
+        logger.debug("Ping request received.")
         return JSONResponse(
             content={"message": "Secondary node is healthy."},
             status_code=200
