@@ -178,6 +178,11 @@ curl -X GET "http://localhost:8001/logs"
 **Note:**
 Replace 8001 with the appropriate port number if you have additional Secondary nodes (e.g., 8002, 8003, etc.).
 
+## Total Ordering
+The Replicated Log system ensures total ordering of log entries across secondary nodes. 
+This guarantees that all logs are retrieved in the same order they were received, maintaining consistency and reliability.
+Sequence validation is performed to ensure that logs are appended and replicated in the correct order and their amount is equal to the maximum sequence number across all log records.
+
 ## Health Checking
 The Replicated Log system includes a health checking mechanism to monitor the status of the Secondary nodes. 
 This ensures that the system can detect and respond to node failures, maintaining the reliability and consistency of the log replication process.  
