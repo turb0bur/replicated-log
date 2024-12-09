@@ -178,6 +178,11 @@ curl -X GET "http://localhost:8001/logs"
 **Note:**
 Replace 8001 with the appropriate port number if you have additional Secondary nodes (e.g., 8002, 8003, etc.).
 
+## Deduplication
+The Replicated Log system includes a deduplication mechanism to ensure that each log entry is only saved once, preventing duplicates. This is achieved by maintaining a set of unique log entries and checking for duplicates before saving them to the storage file.
+
+The deduplication functionality is implemented in the `BaseStorageStrategy` class. This class uses a set data structure to track unique log entries and ensures that only new, unique entries are appended to the storage file
+
 ## Total Ordering
 The Replicated Log system ensures total ordering of log entries across secondary nodes. 
 This guarantees that all logs are retrieved in the same order they were received, maintaining consistency and reliability.
