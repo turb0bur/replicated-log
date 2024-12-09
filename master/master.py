@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 from common.log_entry import LogEntryCreate, LogEntry
 from common.log_storage import LogStorage
 from common.storage_strategy import MasterStorageStrategy
-from common.node_status_manager import NodeStatusManager
+from common.node_status_manager import NodeStatusManager, NodeStatus
 
 logging.basicConfig(
     level=logging.INFO,
@@ -21,6 +21,21 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("master")
+
+
+async def exponential_backoff_with_jitter(delay: float, max_delay: float) -> None:
+    """
+    Handles exponential backoff with jitter. This method will pause for the calculated backoff time.
+
+    Parameters:
+        delay: The current retry delay.
+        max_delay: The maximum retry delay.
+    """
+    jitter = random.uniform(0, delay)
+    backoff_delay = min(delay + jitter, max_delay)
+
+    logger.info(f"Waiting for {backoff_delay:.2f} seconds before retrying...")
+    await asyncio.sleep(backoff_delay)
 
 
 class MasterNode:
@@ -35,12 +50,11 @@ class MasterNode:
         self.app.get("/health")(self.get_health_status)
 
         self.secondary_urls = [url for url in os.getenv("SECONDARY_URLS", "").split(",") if url.strip()]
-        self.REPLICATION_SECONDARY_URLS = [f"{url.strip()}/replicate" for url in self.secondary_urls]
         self.INITIAL_RETRY_DELAY = int(os.getenv("INITIAL_RETRY_DELAY", 2))
         self.MAX_RETRY_DELAY = int(os.getenv("MAX_RETRY_DELAY", 30))
         self.SECONDARY_AUTH_SECRET = os.getenv("SECONDARY_AUTH_SECRET")
 
-        logger.info(f"Loaded {len(self.REPLICATION_SECONDARY_URLS)} secondary URLs.")
+        logger.info(f"Loaded {len(self.secondary_urls)} secondary URLs.")
         logger.info(f"Initial Retry Delay set to: {self.INITIAL_RETRY_DELAY} seconds.")
         logger.info(f"Max Retry Delay set to: {self.MAX_RETRY_DELAY} seconds.")
 
@@ -68,11 +82,24 @@ class MasterNode:
 
     def validate_write_concern(self, message_write_concern: int):
         """Ensure the write concern does not exceed the available secondary nodes."""
-        if message_write_concern > (len(self.REPLICATION_SECONDARY_URLS) + 1):
+        if message_write_concern > (len(self.secondary_urls) + 1):
             raise ValueError(
                 f"Write concern ({message_write_concern}) exceeds the number of secondary nodes available "
-                f"({len(self.REPLICATION_SECONDARY_URLS)}). Adjust the write concern or add more secondary nodes."
+                f"({len(self.secondary_urls)}). Adjust the write concern or add more secondary nodes."
             )
+
+    def is_node_healthy(self, node_url: str) -> bool:
+        """Checks if a node is healthy based on its status. Returns True if healthy, False otherwise."""
+        node_status = self.status_manager.node_status.get(node_url)
+        if node_status is None:
+            logger.warning(f"Node status for {node_url} not found.")
+            return False
+
+        if node_status["status"] == NodeStatus.HEALTHY.value:
+            return True
+        else:
+            logger.info(f"Node {node_url} is {node_status['status']}. Skipping replication.")
+            return False
 
     async def append_log(self, entry: LogEntryCreate = Body(...)) -> JSONResponse:
         async with self.lock:  # to ensure that only one coroutine can modify sequence_counter
@@ -97,13 +124,12 @@ class MasterNode:
             logger.debug(f"Sequence counter incremented to: {self.log_storage.count()}")
 
             logger.info(
-                f"Log #{log_entry.sequence_number}. Secondary URLs to replicate to: {self.REPLICATION_SECONDARY_URLS}")
+                f"Log #{log_entry.sequence_number}. Secondary URLs to replicate to: {self.secondary_urls}")
 
             ack_count = 1
             logger.info(f"Replication count for message #{log_entry.sequence_number} is {ack_count}/{write_concern}")
 
-            replication_coroutines = [self.replicate_with_retries(url, log_entry) for url in
-                                      self.REPLICATION_SECONDARY_URLS]
+            replication_coroutines = [self.replicate_with_retries(url, log_entry) for url in self.secondary_urls]
             replication_tasks = [asyncio.create_task(coro) for coro in replication_coroutines]
 
             if write_concern == 1:
@@ -149,13 +175,18 @@ class MasterNode:
         attempt = 0
         while True:
             attempt += 1
+            if not self.is_node_healthy(url):
+                await exponential_backoff_with_jitter(delay, max_delay)
+                delay = min(delay * 2, max_delay)
+                continue
+
             try:
                 logger.info(
                     f"Log #{log_entry.sequence_number}. "
                     f"Attempting replication to {url}. Attempt {attempt}"
                 )
                 response = await self.client.post(
-                    url,
+                    f"{url}/replicate",
                     json=log_entry.model_dump(),
                     headers=headers,
                     timeout=delay
@@ -174,14 +205,7 @@ class MasterNode:
                     f"Replication to {url} encountered an error on attempt {attempt}: {e}"
                 )
 
-            jitter = random.uniform(0, delay)
-            backoff_delay = min(delay + jitter, max_delay)
-
-            logger.info(
-                f"Log #{log_entry.sequence_number}."
-                f"Waiting for {backoff_delay:.2f} seconds before next replication attempt to {url}"
-            )
-            await asyncio.sleep(backoff_delay)
+            await exponential_backoff_with_jitter(delay, max_delay)
             delay = min(delay * 2, max_delay)
 
     def list_logs(self) -> JSONResponse:
