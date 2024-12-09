@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+import time
 import uuid
 
 import httpx
@@ -34,9 +35,13 @@ async def exponential_backoff_with_jitter(delay: float, max_delay: float) -> Non
     jitter = random.uniform(0, delay)
     backoff_delay = min(delay + jitter, max_delay)
 
+    start_time = time.time()  # Record the time before sleeping
     logger.info(f"Waiting for {backoff_delay:.2f} seconds before retrying...")
     await asyncio.sleep(backoff_delay)
 
+    end_time = time.time()
+    actual_delay = end_time - start_time
+    logger.debug(f"Sleep finished after {actual_delay:.2f} seconds (intended delay was {backoff_delay:.2f} seconds).")
 
 class MasterNode:
     health_check_task = None
