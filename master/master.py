@@ -5,12 +5,13 @@ import random
 import uuid
 
 import httpx
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Depends
 from starlette.responses import JSONResponse
 
 from common.log_entry import LogEntryCreate, LogEntry
 from common.log_storage import LogStorage
 from common.storage_strategy import MasterStorageStrategy
+from common.node_status_manager import NodeStatusManager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,37 +23,42 @@ logging.basicConfig(
 logger = logging.getLogger("master")
 
 
-async def run_replication_tasks(tasks, sequence_number):
-    await asyncio.gather(*tasks)
-    logger.info(f"Log #{sequence_number}. Successfully replicated to all secondary nodes.")
-
-
 class MasterNode:
-    def __init__(self, log_storage: LogStorage):
+    health_check_task = None
+
+    def __init__(self,
+                 log_storage: LogStorage = Depends(LogStorage),
+                 status_manager: NodeStatusManager = Depends(NodeStatusManager)):
         self.app = FastAPI(lifespan=self.lifespan)
         self.app.post("/logs")(self.append_log)
         self.app.get("/logs")(self.list_logs)
+        self.app.get("/health")(self.get_health_status)
 
-        self.SECONDARY_URLS = [
-            f"{url.strip()}/replicate"
-            for url in os.getenv("SECONDARY_URLS", "").split(",")
-            if url.strip()
-        ]
+        self.secondary_urls = [url for url in os.getenv("SECONDARY_URLS", "").split(",") if url.strip()]
+        self.REPLICATION_SECONDARY_URLS = [f"{url.strip()}/replicate" for url in self.secondary_urls]
         self.INITIAL_RETRY_DELAY = int(os.getenv("INITIAL_RETRY_DELAY", 2))
         self.MAX_RETRY_DELAY = int(os.getenv("MAX_RETRY_DELAY", 30))
         self.SECONDARY_AUTH_SECRET = os.getenv("SECONDARY_AUTH_SECRET")
 
-        logger.info(f"Loaded {len(self.SECONDARY_URLS)} secondary URLs.")
+        logger.info(f"Loaded {len(self.REPLICATION_SECONDARY_URLS)} secondary URLs.")
         logger.info(f"Initial Retry Delay set to: {self.INITIAL_RETRY_DELAY} seconds.")
         logger.info(f"Max Retry Delay set to: {self.MAX_RETRY_DELAY} seconds.")
 
         self.client = httpx.AsyncClient()
         self.lock = asyncio.Lock()
         self.log_storage = storage
+        self.status_manager = status_manager
 
     async def lifespan(self, app: FastAPI):
         logger.debug("Starting up the Master application...")
+        self.health_check_task = asyncio.create_task(self.status_manager.monitor_health(self.secondary_urls))
         yield
+        if self.health_check_task:
+            self.health_check_task.cancel()
+            try:
+                await self.health_check_task
+            except asyncio.CancelledError:
+                logger.info("Health check task successfully cancelled.")
         logger.debug("Shutting down the Master application...")
         await self.shutdown()
 
@@ -62,10 +68,10 @@ class MasterNode:
 
     def validate_write_concern(self, message_write_concern: int):
         """Ensure the write concern does not exceed the available secondary nodes."""
-        if message_write_concern > (len(self.SECONDARY_URLS) + 1):
+        if message_write_concern > (len(self.REPLICATION_SECONDARY_URLS) + 1):
             raise ValueError(
                 f"Write concern ({message_write_concern}) exceeds the number of secondary nodes available "
-                f"({len(self.SECONDARY_URLS)}). Adjust the write concern or add more secondary nodes."
+                f"({len(self.REPLICATION_SECONDARY_URLS)}). Adjust the write concern or add more secondary nodes."
             )
 
     async def append_log(self, entry: LogEntryCreate = Body(...)) -> JSONResponse:
@@ -90,12 +96,14 @@ class MasterNode:
 
             logger.debug(f"Sequence counter incremented to: {self.log_storage.count()}")
 
-            logger.info(f"Log #{log_entry.sequence_number}. Secondary URLs to replicate to: {self.SECONDARY_URLS}")
+            logger.info(
+                f"Log #{log_entry.sequence_number}. Secondary URLs to replicate to: {self.REPLICATION_SECONDARY_URLS}")
 
             ack_count = 1
             logger.info(f"Replication count for message #{log_entry.sequence_number} is {ack_count}/{write_concern}")
 
-            replication_coroutines = [self.replicate_with_retries(url, log_entry) for url in self.SECONDARY_URLS]
+            replication_coroutines = [self.replicate_with_retries(url, log_entry) for url in
+                                      self.REPLICATION_SECONDARY_URLS]
             replication_tasks = [asyncio.create_task(coro) for coro in replication_coroutines]
 
             if write_concern == 1:
@@ -183,7 +191,23 @@ class MasterNode:
             status_code=200
         )
 
+    def get_health_status(self) -> JSONResponse:
+        logger.info("Received request to get health status of secondary nodes.")
+        logger.info(self.status_manager.node_status.items())
+        health_status = [
+            {
+                "node_url": node_url,
+                **status_data,
+            }
+            for node_url, status_data in self.status_manager.node_status.items()
+        ]
+        return JSONResponse(
+            content={"nodes": health_status},
+            status_code=200
+        )
+
 
 storage = LogStorage(MasterStorageStrategy())
-master_node = MasterNode(log_storage=storage)
+status_manager = NodeStatusManager()
+master_node = MasterNode(log_storage=storage, status_manager=status_manager)
 app = master_node.app
