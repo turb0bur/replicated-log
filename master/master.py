@@ -40,7 +40,7 @@ class MasterNode:
         ]
         self.INITIAL_RETRY_DELAY = int(os.getenv("INITIAL_RETRY_DELAY", 2))
         self.MAX_RETRY_DELAY = int(os.getenv("MAX_RETRY_DELAY", 30))
-        self.REPLICATE_SECRET = os.getenv("REPLICATE_SECRET")
+        self.SECONDARY_AUTH_SECRET = os.getenv("SECONDARY_AUTH_SECRET")
 
         logger.info(f"Loaded {len(self.SECONDARY_URLS)} secondary URLs.")
         logger.info(f"Initial Retry Delay set to: {self.INITIAL_RETRY_DELAY} seconds.")
@@ -52,7 +52,7 @@ class MasterNode:
 
     async def lifespan(self, app: FastAPI):
         logger.debug("Starting up the Master application...")
-        yield  # Application runs here
+        yield
         logger.debug("Shutting down the Master application...")
         await self.shutdown()
 
@@ -134,7 +134,7 @@ class MasterNode:
                 raise HTTPException(status_code=500, detail=f"Failed to meet write concern: {write_concern}")
 
     async def replicate_with_retries(self, url: str, log_entry: LogEntry) -> httpx.Response:
-        headers = {"X-API-Key": self.REPLICATE_SECRET}
+        headers = {"X-API-Key": self.SECONDARY_AUTH_SECRET}
         max_delay = self.MAX_RETRY_DELAY
         delay = self.INITIAL_RETRY_DELAY
 

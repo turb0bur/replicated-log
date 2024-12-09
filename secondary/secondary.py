@@ -3,7 +3,7 @@ import logging
 import os
 import random
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.responses import JSONResponse
 
 from common.log_entry import LogEntry
@@ -25,9 +25,10 @@ class SecondaryNode:
         self.app = FastAPI(lifespan=self.lifespan)
         self.app.post("/replicate")(self.replicate)
         self.app.get("/logs")(self.list_logs)
+        self.app.get("/ping")(self.ping)
 
         self.MAX_REPLICATION_DELAY = int(os.getenv("MAX_REPLICATION_DELAY", 5))
-        self.REPLICATE_SECRET = os.getenv("REPLICATE_SECRET")
+        self.SECONDARY_AUTH_SECRET = os.getenv("SECONDARY_AUTH_SECRET")
         self.SECONDARY_ERROR_PROBABILITY = float(os.getenv("SECONDARY_ERROR_PROBABILITY", 0.1))
 
         logger.info(f"Max Replication Delay set to: {self.MAX_REPLICATION_DELAY} seconds.")
@@ -36,8 +37,13 @@ class SecondaryNode:
 
     async def lifespan(self, app: FastAPI):
         logger.debug("Starting up the Secondary application...")
-        yield  # Application runs here
+        yield
         logger.debug("Shutting down the Secondary application...")
+
+    def authorize_request(self, auth_header: str = Header(None)):
+        """Authorization dependency to validate the X-API-Key header."""
+        if auth_header != self.SECONDARY_AUTH_SECRET:
+            raise HTTPException(status_code=403, detail="Unauthorized")
 
     async def simulate_delay(self, sequence_number: int):
         """Simulates a random delay in replication."""
@@ -55,7 +61,8 @@ class SecondaryNode:
                          f"Simulated error for log replication with {self.SECONDARY_ERROR_PROBABILITY * 100}% chance")
             raise HTTPException(status_code=500, detail="Simulated internal server error")
 
-    async def replicate(self, log_entry: LogEntry) -> JSONResponse:
+    async def replicate(self, log_entry: LogEntry, _: None = Depends(authorize_request)) -> JSONResponse:
+        """Replicates the log entry to the secondary node with authorization."""
         try:
             self.simulate_error(log_entry.sequence_number)
             await self.simulate_delay(log_entry.sequence_number)
@@ -72,9 +79,18 @@ class SecondaryNode:
             raise HTTPException(status_code=500, detail="Internal Server Error")
 
     async def list_logs(self) -> JSONResponse:
+        """List all the logs stored in the secondary node."""
         logger.info("Received request to list all replicated logs.")
         return JSONResponse(
             content=[log.model_dump() for log in self.log_storage.list()],
+            status_code=200
+        )
+
+    async def ping(self, _: None = Depends(authorize_request)) -> JSONResponse:
+        """Ping endpoint to check secondary node health with authorization."""
+        logger.info("Ping request received.")
+        return JSONResponse(
+            content={"message": "Secondary node is healthy."},
             status_code=200
         )
 
