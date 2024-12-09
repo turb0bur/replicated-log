@@ -43,6 +43,7 @@ async def exponential_backoff_with_jitter(delay: float, max_delay: float) -> Non
     actual_delay = end_time - start_time
     logger.debug(f"Sleep finished after {actual_delay:.2f} seconds (intended delay was {backoff_delay:.2f} seconds).")
 
+
 class MasterNode:
     health_check_task = None
 
@@ -54,6 +55,7 @@ class MasterNode:
         self.app.get("/logs")(self.list_logs)
         self.app.get("/health")(self.get_health_status)
 
+        self.read_only = False
         self.secondary_urls = [url for url in os.getenv("SECONDARY_URLS", "").split(",") if url.strip()]
         self.INITIAL_RETRY_DELAY = int(os.getenv("INITIAL_RETRY_DELAY", 2))
         self.MAX_RETRY_DELAY = int(os.getenv("MAX_RETRY_DELAY", 30))
@@ -93,20 +95,41 @@ class MasterNode:
                 f"({len(self.secondary_urls)}). Adjust the write concern or add more secondary nodes."
             )
 
-    def is_node_healthy(self, node_url: str) -> bool:
-        """Checks if a node is healthy based on its status. Returns True if healthy, False otherwise."""
-        node_status = self.status_manager.node_status.get(node_url)
-        if node_status is None:
-            logger.warning(f"Node status for {node_url} not found.")
-            return False
+    def has_quorum(self) -> bool:
+        """Check if the majority of the nodes are healthy."""
+        healthy_nodes = self.status_manager.get_healthy_nodes_count()
+        return healthy_nodes >= (len(self.secondary_urls) // 2)
 
-        if node_status["status"] == NodeStatus.HEALTHY.value:
-            return True
+    def is_read_only(self) -> bool:
+        """Returns True if the node should be in read-only mode due to quorum failure."""
+        return not self.has_quorum()
+
+    def update_read_only_status(self):
+        """Update the read-only status based on the quorum."""
+        if self.is_read_only():
+            self.set_read_only_mode()
         else:
-            logger.info(f"Node {node_url} is {node_status['status']}. Skipping replication.")
-            return False
+            self.unset_read_only_mode()
+
+    def set_read_only_mode(self):
+        """Switch the master node into read-only mode."""
+        self.read_only = True
+        logger.warning("Master node switched to read-only mode due to insufficient quorum.")
+
+    def unset_read_only_mode(self):
+        """Switch the master node back to writable mode."""
+        self.read_only = False
+        logger.info("Master node switched to writable mode.")
 
     async def append_log(self, entry: LogEntryCreate = Body(...)) -> JSONResponse:
+        self.update_read_only_status()
+        if self.read_only:
+            logger.info("Master node is in read-only mode, rejecting log append request.")
+            return JSONResponse(
+                content={"detail": "Read-only mode due to insufficient nodes quorum."},
+                status_code=503
+            )
+
         async with self.lock:  # to ensure that only one coroutine can modify sequence_counter
             new_sequence_number = self.log_storage.count() + 1
             logger.info(f"Log #{new_sequence_number}. Received log entry request: {entry.message}")

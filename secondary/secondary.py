@@ -92,7 +92,7 @@ class SecondaryNode:
         max_sequence_number = max(log.sequence_number for log in logs)
 
         if len(logs) != max_sequence_number:
-            logger.warning("Log sequence is incomplete. Missing sequence numbers.")
+            logger.warning("Log sequence is incomplete. Missing sequence numbers. Please wait for replication.")
             raise HTTPException(status_code=500, detail="Log sequence is incomplete.")
 
         sorted_logs = sorted(logs, key=lambda log: log.sequence_number)

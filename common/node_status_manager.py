@@ -102,17 +102,17 @@ class NodeStatusManager(metaclass=SingletonMeta):
     def mark_as_healthy(self, node_url: str):
         """Mark the node as healthy."""
         self.update_node_status(node_url, NodeStatus.HEALTHY)
-        logger.info(f"Node {node_url} is marked as Healthy.")
+        logger.debug(f"Node {node_url} is marked as Healthy.")
 
     def mark_as_suspected(self, node_url: str):
         """Mark the node as suspected."""
         self.update_node_status(node_url, NodeStatus.SUSPECTED)
-        logger.info(f"Node {node_url} is marked as Suspected.")
+        logger.debug(f"Node {node_url} is marked as Suspected.")
 
     def mark_as_unhealthy(self, node_url: str):
         """Mark the node as unhealthy."""
         self.update_node_status(node_url, NodeStatus.UNHEALTHY)
-        logger.info(f"Node {node_url} is marked as Unhealthy.")
+        logger.debug(f"Node {node_url} is marked as Unhealthy.")
 
     def update_node_status(self, node_url: str, status: NodeStatus):
         """Update the status and last_updated field for a node."""
@@ -131,3 +131,7 @@ class NodeStatusManager(metaclass=SingletonMeta):
         else:
             logger.info(f"Node {node_url} is {node_status['status']}. Skipping replication.")
             return False
+
+    def get_healthy_nodes_count(self) -> int:
+        """Returns the number of healthy secondary nodes."""
+        return sum(1 for node_status in self.node_status.values() if node_status["status"] == "healthy")
